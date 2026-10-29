@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum UserRole {
+  STUDENT
+  ADMIN
+}
+
+enum AnalysisStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum LearningTaskStatus {
+  TODO
+  DONE
+}
+
+model User {
+  id              String           @id @default(cuid())
+  name            String
+  email           String           @unique
+  passwordHash    String
+  role            UserRole         @default(STUDENT)
+  profile         StudentProfile?
+  resumes         Resume[]
+  analyses        ResumeAnalysis[]
+  savedRoles      SavedJobRole[]
+  learningPlans   LearningPlan[]
+  auditEvents     AuditEvent[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model StudentProfile {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  degree               String?
+  specialization       String?
+  graduationYear       Int?
+  experienceLevel      String?
+  preferredRoles       Json
+  preferredIndustries  Json
+  preferredLocations   Json
+  workMode             String?
+  learningPace         String?
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Resume {
+  id               String           @id @default(cuid())
+  userId           String
+  originalFilename String
+  fileType         String
+  extractedText    String
+  contentHash      String
+  parsingStatus    String           @default("COMPLETED")
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analyses         ResumeAnalysis[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model ResumeAnalysis {
+  id              String         @id @default(cuid())
+  userId          String
+  resumeId        String
+  status          AnalysisStatus @default(PROCESSING)
+  analysisType    String
+  targetRole      String?
+  jobDescription  String?
+  modelIdentifier String?
+  promptVersion   String         @default("2026-01")
+  structuredResult Json?
+  errorCode       String?
+  completedAt     DateTime?
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume          Resume         @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  recommendations JobRecommendation[]
+  learningPlans   LearningPlan[]
+  createdAt       DateTime       @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model JobRole {
+  id              String         @id @default(cuid())
+  title           String
+  description     String
+  category        String
+  requiredSkills  Json
+  preferredSkills Json
+  skillWeights    Json
+  experienceLevel String         @default("ENTRY")
+  isActive        Boolean        @default(true)
+  source          String         @default("REFERENCE_TEMPLATE")
+  recommendations JobRecommendation[]
+  savedBy         SavedJobRole[]
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([title, category])
+}
+
+model JobRecommendation {
+  id                    String         @id @default(cuid())
+  analysisId            String
+  jobRoleId             String
+  matchScore            Int
+  explanation           String
+  matchingSkills        Json
+  partialSkills         Json
+  missingEvidenceSkills Json
+  createdAt             DateTime       @default(now())
+  analysis              ResumeAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  jobRole               JobRole        @relation(fields: [jobRoleId], references: [id], onDelete: Cascade)
+
+  @@unique([analysisId, jobRoleId])
+}
+
+model LearningPlan {
+  id            String         @id @default(cuid())
+  userId        String
+  analysisId    String?
+  title         String
+  durationWeeks Int
+  status        String         @default("ACTIVE")
+  tasks         LearningTask[]
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis      ResumeAnalysis? @relation(fields: [analysisId], references: [id], onDelete: SetNull)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+model LearningTask {
+  id            String            @id @default(cuid())
+  learningPlanId String
+  title         String
+  skill         String
+  description   String
+  resourceUrl   String?
+  estimatedHours Int
+  priority      String
+  weekNumber    Int
+  status        LearningTaskStatus @default(TODO)
+  completedAt   DateTime?
+  learningPlan  LearningPlan       @relation(fields: [learningPlanId], references: [id], onDelete: Cascade)
+
+  @@index([learningPlanId, weekNumber])
+}
+
+model SavedJobRole {
+  id        String   @id @default(cuid())
+  userId    String
+  jobRoleId String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobRole   JobRole  @relation(fields: [jobRoleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobRoleId])
+}
+
+model AuditEvent {
+  id           String   @id @default(cuid())
+  actorId      String?
+  action       String
+  resourceType String
+  safeMetadata Json?
+  timestamp    DateTime @default(now())
+  actor        User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([timestamp, action])
+}
